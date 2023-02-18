@@ -4,7 +4,7 @@ import { hash } from "bcryptjs";
 module.exports = {
   up: (queryInterface: QueryInterface) => {
     return queryInterface.sequelize.transaction(async t => {
-      const passwordHash = await hash("I9q5q%^35ACn", 8);
+      const passwordHash = await hash("6aG7pUt*L7Kh", 8);
       return Promise.all([
         queryInterface.bulkInsert(
           "Users",
