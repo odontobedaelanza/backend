@@ -14,6 +14,8 @@ import GetTicketWbot from "../../helpers/GetTicketWbot";
 import { verifyMessage } from "../WbotServices/wbotMessageListener";
 import { isNil } from "lodash";
 import { TranslateVariables } from "./TranslateVariables";
+import { logger } from "../../utils/logger";
+import TicketTag from "../../models/TicketTag";
 
 interface TicketData {
   status?: string;
@@ -21,6 +23,7 @@ interface TicketData {
   queueId?: number | null;
   chatbot?: boolean;
   queueOptionId?: number;
+  flowStatus?: string;
 }
 
 interface Request {
@@ -43,7 +46,7 @@ const UpdateTicketService = async ({
   skipRating = false
 }: Request): Promise<Response> => {
   try {
-    const { status } = ticketData;
+    const { status, flowStatus } = ticketData;
     let { queueId, userId } = ticketData;
     let chatbot: boolean | null = ticketData.chatbot || false;
     let queueOptionId: number | null = ticketData.queueOptionId || null;
@@ -83,7 +86,7 @@ const UpdateTicketService = async ({
         companyId
       );
 
-      if (setting?.value === "enabled") {
+      if (setting?.value === "enabled" && ticket.chatbot !== true) {
         if (ticketTraking.ratingAt == null && skipRating == false) {
           const ratingTxt = ratingMessage || "";
           let bodyRatingMessage = TranslateVariables(`\u200e${ratingTxt}\n\n`, {
@@ -96,6 +99,10 @@ const UpdateTicketService = async ({
 
           await ticketTraking.update({
             ratingAt: moment().toDate()
+          });
+
+          await ticket.update({
+            flowStatus: "EVALUATION"
           });
 
           io.to("open")
@@ -118,6 +125,11 @@ const UpdateTicketService = async ({
         });
         await SendWhatsAppMessage({ body, ticket });
       }
+
+      await ticket.update({
+        lastMessageOutOfHours: null,
+        flowStatus: "FINISHED"
+      });
 
       ticketTraking.finishedAt = moment().toDate();
       ticketTraking.whatsappId = ticket.whatsappId;
@@ -153,6 +165,7 @@ const UpdateTicketService = async ({
 
     await ticket.update({
       status,
+      flowStatus,
       queueId,
       userId,
       chatbot,

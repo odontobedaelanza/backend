@@ -10,10 +10,5 @@
     "emitDecoratorMetadata": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
-  },
-  "exclude": [
-    "node_modules",
-    "src/database/migrations",
-    "src/database/seeds"
-  ]
+  }
 }

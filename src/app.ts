@@ -2,7 +2,7 @@ import "./bootstrap";
 import "reflect-metadata";
 import "express-async-errors";
 import express, { Request, Response, NextFunction } from "express";
-import cors from 'cors';
+import cors from "cors";
 import cookieParser from "cookie-parser";
 import * as Sentry from "@sentry/node";
 
@@ -28,22 +28,17 @@ app.set("queues", {
   contactQueue
 });
 
-
-app.use(cookieParser());
 app.use(
   cors({
     credentials: true,
     origin: process.env.FRONTEND_URL
   })
 );
+
+app.use(cookieParser());
 app.use(express.json());
 app.use(Sentry.Handlers.requestHandler());
 app.use("/public", express.static(uploadConfig.directory));
-app.get('/healthcheck', (_, res) => {
-  return res.json({
-    message: 'health check'
-  })
-})
 app.use(routes);
 
 app.use(Sentry.Handlers.errorHandler());

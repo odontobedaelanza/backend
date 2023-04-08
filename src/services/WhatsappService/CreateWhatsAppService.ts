@@ -37,18 +37,17 @@ const CreateWhatsAppService = async ({
   token = "",
   provider = "beta"
 }: Request): Promise<Response> => {
-  const company = await Company.findOne({
+  const connectionsLimit = +process.env.CONNECTIONS || 1;
+  const whatsappCount = await Whatsapp.count({
     where: {
-      id: companyId
+      companyId
     }
   });
 
-  if (company !== null) {
-    const whatsappCount = await Whatsapp.count({
-      where: {
-        companyId
-      }
-    });
+  if (whatsappCount >= connectionsLimit) {
+    throw new AppError(
+      `Número máximo de conexões já alcançado: ${connectionsLimit}`
+    );
   }
 
   const schema = Yup.object().shape({
@@ -88,10 +87,6 @@ const CreateWhatsAppService = async ({
     if (oldDefaultWhatsapp) {
       await oldDefaultWhatsapp.update({ isDefault: false, companyId });
     }
-  }
-
-  if (queueIds.length > 1 && !greetingMessage) {
-    throw new AppError("ERR_WAPP_GREETING_REQUIRED");
   }
 
   if (token !== null && token !== "") {

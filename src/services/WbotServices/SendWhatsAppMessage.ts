@@ -23,18 +23,8 @@ const SendWhatsAppMessage = async ({
   const number = `${ticket.contact.number}@${
     ticket.isGroup ? "g.us" : "s.whatsapp.net"
   }`;
+  const text = formatBody(body, ticket.contact);
   if (quotedMsg) {
-    if (wbot.type === "legacy") {
-      const chatMessages = await (wbot as WALegacySocket).loadMessageFromWA(
-        number,
-        quotedMsg.id
-      );
-
-      options = {
-        quoted: chatMessages
-      };
-    }
-
     if (wbot.type === "md") {
       const chatMessages = await Message.findOne({
         where: {
@@ -49,7 +39,7 @@ const SendWhatsAppMessage = async ({
           quoted: {
             key: msgFound.key,
             message: {
-              extendedTextMessage: msgFound.message.extendedTextMessage
+              ...msgFound.message
             }
           }
         };
@@ -61,13 +51,13 @@ const SendWhatsAppMessage = async ({
     const sentMessage = await wbot.sendMessage(
       number,
       {
-        text: formatBody(body, ticket.contact)
+        text
       },
       {
         ...options
       }
     );
-    await ticket.update({ lastMessage: formatBody(body, ticket.contact) });
+    await ticket.update({ lastMessage: text });
     return sentMessage;
   } catch (err) {
     Sentry.captureException(err);

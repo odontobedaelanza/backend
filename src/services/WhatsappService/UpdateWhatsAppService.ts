@@ -60,10 +60,6 @@ const UpdateWhatsAppService = async ({
     throw new AppError(err.message);
   }
 
-  if (queueIds.length > 1 && !greetingMessage) {
-    throw new AppError("ERR_WAPP_GREETING_REQUIRED");
-  }
-
   let oldDefaultWhatsapp: Whatsapp | null = null;
 
   if (isDefault) {

@@ -33,20 +33,15 @@ const CreateUserService = async ({
   selectedCompanyId,
   selectedCompanyQueues = []
 }: Request): Promise<Response> => {
-  if (companyId !== undefined) {
-    const company = await Company.findOne({
-      where: {
-        id: companyId
-      }
-    });
-
-    if (company !== null) {
-      const usersCount = await User.count({
-        where: {
-          companyId
-        }
-      });
+  const usersLimit = +process.env.USERS || 1;
+  const usersCount = await User.count({
+    where: {
+      companyId
     }
+  });
+
+  if (usersCount >= usersLimit) {
+    throw new AppError(`Número máximo de usuários já alcançado: ${usersLimit}`);
   }
 
   const schema = Yup.object().shape({

@@ -38,7 +38,9 @@ export async function VerifyQueue(
       msg?.message?.extendedTextMessage?.text ||
       msg?.message?.conversation;
 
-    const selectedButtonId = `${receivedOption}`;
+    const selectedButtonId = `${receivedOption}`.replace(/\D/g, "");
+
+    console.log(`VerifyQueue: selectedButtonId`, selectedButtonId);
 
     logger.info(
       `VerifyQueue -> Ticket ${ticket.id} -> Contact ${contact.name} -> Mensagem: ${receivedOption}`

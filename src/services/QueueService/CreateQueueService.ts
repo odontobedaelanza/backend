@@ -16,18 +16,15 @@ interface QueueData {
 const CreateQueueService = async (queueData: QueueData): Promise<Queue> => {
   const { color, name, companyId } = queueData;
 
-  const company = await Company.findOne({
+  const queuesLimit = +process.env.QUEUES || 1;
+  const queuesCount = await Queue.count({
     where: {
-      id: companyId
+      companyId
     }
   });
 
-  if (company !== null) {
-    const queuesCount = await Queue.count({
-      where: {
-        companyId
-      }
-    });
+  if (queuesCount >= queuesLimit) {
+    throw new AppError(`Número máximo de filas já alcançado: ${queuesLimit}`);
   }
 
   const queueSchema = Yup.object().shape({

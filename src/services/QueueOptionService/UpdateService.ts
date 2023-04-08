@@ -12,6 +12,7 @@ interface QueueData {
   path?: string;
   fileName?: string;
   finalize?: string | boolean;
+  waitTreatment?: string | boolean;
 }
 
 const UpdateService = async (
@@ -35,6 +36,9 @@ const UpdateService = async (
   }
   if (queueOptionData?.finalize == "false") {
     queueOptionData.finalize = false;
+  }
+  if (queueOptionData?.waitTreatment == "false") {
+    queueOptionData.waitTreatment = false;
   }
 
   await queueOption.update(queueOptionData);

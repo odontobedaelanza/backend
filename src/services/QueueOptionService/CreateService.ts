@@ -11,6 +11,7 @@ interface QueueOptionData {
   path?: string;
   fileName?: string;
   finalize?: string | boolean;
+  waitTreatment?: string | boolean;
 }
 
 const CreateService = async (
@@ -24,6 +25,9 @@ const CreateService = async (
   }
   if (queueOptionData?.finalize == "false") {
     queueOptionData.finalize = false;
+  }
+  if (queueOptionData?.waitTreatment == "true") {
+    queueOptionData.waitTreatment = true;
   }
   const queueOption = await QueueOption.create(queueOptionData);
   return queueOption;

@@ -51,6 +51,10 @@ class QueueOption extends Model<QueueOption> {
   @Column
   finalize: boolean;
 
+  @AllowNull
+  @Column
+  waitTreatment: boolean;
+
   @ForeignKey(() => Queue)
   @Column
   queueId: number;

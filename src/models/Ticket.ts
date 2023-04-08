@@ -44,12 +44,19 @@ class Ticket extends Model<Ticket> {
   @Column
   lastMessage: string;
 
+  @Column
+  lastMessageOutOfHours: Date;
+
   @Default(false)
   @Column
   isGroup: boolean;
 
   @Column
   protocol: string;
+
+  @Default(null)
+  @Column
+  flowStatus: string; //INITIAL_MESSAGE, QUEUE_RECEIVED_OPTIONS, QUEUE_SELECTED, CHATBOT, CHATBOT_CUSTOMER_PENDING, CHATBOT_CUSTOMER_RESPONDEND, EVALUATION, FINISHED
 
   @CreatedAt
   createdAt: Date;

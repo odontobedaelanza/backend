@@ -2,7 +2,7 @@ import { join } from "path";
 import { promisify } from "util";
 import { writeFile } from "fs";
 import * as Sentry from "@sentry/node";
-import { isNil, isNull } from "lodash";
+import { isNull } from "lodash";
 
 import {
   AnyWASocket,
@@ -27,7 +27,6 @@ import { logger } from "../../utils/logger";
 import CreateOrUpdateContactService from "../ContactServices/CreateOrUpdateContactService";
 import FindOrCreateTicketService from "../TicketServices/FindOrCreateTicketService";
 import ShowWhatsAppService from "../WhatsappService/ShowWhatsAppService";
-import { debounce } from "../../helpers/Debounce";
 import formatBody from "../../helpers/Mustache";
 import { Store } from "../../libs/store";
 import TicketTraking from "../../models/TicketTraking";
@@ -36,17 +35,22 @@ import SendWhatsAppMessage from "./SendWhatsAppMessage";
 import moment from "moment";
 import Queue from "../../models/Queue";
 import FindOrCreateATicketTrakingService from "../TicketServices/FindOrCreateATicketTrakingService";
-import VerifyCurrentSchedule from "../CompanyService/VerifyCurrentSchedule";
 import { Op } from "sequelize";
 import User from "../../models/User";
-import Setting from "../../models/Setting";
 import { contactQueue } from "../../queues/contacts";
 import { TranslateVariables } from "../TicketServices/TranslateVariables";
 
 import { cacheLayer } from "../../libs/cache";
 import Whatsapp from "../../models/Whatsapp";
 import { removeWbot } from "../../libs/wbot";
-import { HandleChatbot } from "./HandleChatbot";
+import {
+  HandleChatbot,
+  handleOutOfHoursFromCompany,
+  handleOutOfHoursFromQueue,
+  verifyOutOfHoursFromCompany,
+  verifyOutOfHoursFromQueue,
+  verifyOutOfHoursSetup
+} from "./HandleChatbot";
 import { VerifyQueue } from "./VerifyQueue";
 
 type Session = AnyWASocket & {
@@ -474,7 +478,8 @@ const handleRating = async (
   const bodyMessage = getBodyMessage(msg);
 
   if (bodyMessage) {
-    rate = +bodyMessage;
+    const numbers = bodyMessage.match(/\d/g);
+    rate = +numbers.join("");
   }
 
   if (!Number.isNaN(rate) && Number.isInteger(rate) && !isNull(rate)) {
@@ -513,7 +518,8 @@ const handleRating = async (
     await ticket.update({
       queueId: null,
       userId: null,
-      status: "closed"
+      status: "closed",
+      flowStatus: "FINISHED"
     });
 
     io.to("open").emit(`company-${ticket.companyId}-ticket`, {
@@ -529,6 +535,11 @@ const handleRating = async (
         ticket,
         ticketId: ticket.id
       });
+    logger.info(`handleRating (538) -> Avaliação realizada: ${bodyMessage}`);
+  } else {
+    console.error(
+      `handleRating (541) -> Erro na avaliação -> bodyMessage: ${bodyMessage}`
+    );
   }
 };
 
@@ -597,10 +608,6 @@ const handleMessage = async (
     const whatsapp = await ShowWhatsAppService(wbot.id!, companyId);
     await whatsapp.update({ count_messages: whatsapp.count_messages + 1 });
 
-    // const count = wbot.store.chats.get(
-    //   msg.key.remoteJid || msg.key.participant
-    // );
-
     let unreadMessages = 0;
 
     const contact = await verifyContact(msgContact, wbot, companyId);
@@ -653,56 +660,14 @@ const handleMessage = async (
         }
       }
     } catch (e) {
-      Sentry.captureException(e);
-      console.log(e);
+      console.error(`handleMessage (663) -> e.message: ${e.message}`);
+      console.error(`handleMessage (664) -> e.stack: ${e.stack}`);
     }
 
     if (hasMedia) {
       await verifyMediaMessage(msg, ticket, contact);
     } else {
       await verifyMessage(msg, ticket);
-    }
-
-    const currentSchedule = await VerifyCurrentSchedule(companyId);
-
-    const scheduleType = await Setting.findOne({
-      where: {
-        companyId,
-        key: "scheduleType"
-      }
-    });
-
-    try {
-      //Tratamento para envio de mensagem quando a empresa está fora do expediente
-      if (!msg.key.fromMe && scheduleType) {
-        if (
-          scheduleType.value === "company" &&
-          !isNil(currentSchedule) &&
-          (!currentSchedule || currentSchedule.inActivity === false)
-        ) {
-          const body = `${whatsapp.outOfHoursMessage}`;
-
-          const debouncedSentMessage = debounce(
-            async () => {
-              await wbot.sendMessage(
-                `${ticket.contact.number}@${
-                  ticket.isGroup ? "g.us" : "s.whatsapp.net"
-                }`,
-                {
-                  text: body
-                }
-              );
-            },
-            3000,
-            ticket.id
-          );
-          debouncedSentMessage();
-          return;
-        }
-      }
-    } catch (e) {
-      Sentry.captureException(e);
-      console.log(e);
     }
 
     const dontReadTheFirstQuestion = ticket.queue === null;
@@ -719,66 +684,19 @@ const handleMessage = async (
 
     await ticket.reload();
 
-    try {
-      //Fluxo fora do expediente
-      if (!msg.key.fromMe && scheduleType && ticket.queueId !== null) {
-        /**
-         * Tratamento para envio de mensagem quando a fila está fora do expediente
-         */
-        const queue = await Queue.findByPk(ticket.queueId);
-
-        const { schedules }: any = queue;
-        const now = moment();
-        const weekday = now.format("dddd").toLowerCase();
-        let schedule = null;
-
-        if (Array.isArray(schedules) && schedules.length > 0) {
-          schedule = schedules.find(
-            s =>
-              s.weekdayEn === weekday &&
-              s.startTime !== "" &&
-              s.startTime !== null &&
-              s.endTime !== "" &&
-              s.endTime !== null
-          );
+    if (!ticket.chatbot && ticket.queueId !== null) {
+      const settingType = await verifyOutOfHoursSetup(ticket);
+      if (settingType === "queue") {
+        const outOfHours = await verifyOutOfHoursFromQueue(msg, ticket);
+        if (outOfHours) {
+          await handleOutOfHoursFromQueue(ticket, wbot);
         }
-
-        if (
-          scheduleType.value === "queue" &&
-          queue.outOfHoursMessage !== null &&
-          queue.outOfHoursMessage !== "" &&
-          !isNil(schedule)
-        ) {
-          const startTime = moment(schedule.startTime, "HH:mm");
-          const endTime = moment(schedule.endTime, "HH:mm");
-
-          if (now.isBefore(startTime) || now.isAfter(endTime)) {
-            const body = TranslateVariables(`${queue.outOfHoursMessage}`, {
-              contact: ticket.contact,
-              ticket
-            });
-            const debouncedSentMessage = debounce(
-              async () => {
-                await wbot.sendMessage(
-                  `${ticket.contact.number}@${
-                    ticket.isGroup ? "g.us" : "s.whatsapp.net"
-                  }`,
-                  {
-                    text: body
-                  }
-                );
-              },
-              3000,
-              ticket.id
-            );
-            debouncedSentMessage();
-            return;
-          }
+      } else if (settingType === "company") {
+        const outOfHours = await verifyOutOfHoursFromCompany(msg, ticket);
+        if (outOfHours) {
+          await handleOutOfHoursFromCompany(ticket, wbot);
         }
       }
-    } catch (e) {
-      Sentry.captureException(e);
-      console.log(e);
     }
 
     if (
@@ -831,8 +749,8 @@ const handleMessage = async (
       }
     }
   } catch (err) {
-    Sentry.captureException(err);
-    logger.error(`Error handling whatsapp message: Err: ${err}`);
+    logger.error(`Error handling whatsapp message: Err: ${err.message}`);
+    logger.error(`Error handling whatsapp message: Err: ${err.stack}`);
   }
 };
 
